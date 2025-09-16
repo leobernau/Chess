@@ -41,6 +41,7 @@
   }
   h1 { margin-bottom: 10px; }
   h2 { margin-top: 10px; }
+  h3 { margin-top: 5px; color: #f88; }
 </style>
 </head>
 <body>
@@ -72,9 +73,7 @@ const pieces = {
 let selected = null;
 let turn = "white";
 let possibleMoves = [];
-let whiteKingMoved=false, blackKingMoved=false;
-let whiteRookMoved=[false,false], blackRookMoved=[false,false];
-let enPassant = null; // speichert En-Passant-Ziel
+let enPassant = null;
 
 function render() {
   boardEl.innerHTML = "";
@@ -89,7 +88,6 @@ function render() {
       if (selected && selected.r===r && selected.c===c) {
         sq.classList.add("highlight");
       }
-      // Punkte für mögliche Züge
       if(possibleMoves.some(m=>m.r===r && m.c===c)){
         const dot = document.createElement("div");
         dot.className = "dot";
@@ -101,17 +99,17 @@ function render() {
   turnEl.textContent = (turn==="white"?"Weiß":"Schwarz") + " am Zug";
 }
 
-function isWhite(piece){ return piece && piece===piece.toUpperCase(); }
-function isBlack(piece){ return piece && piece===piece.toLowerCase(); }
+function isWhite(p){ return p && p===p.toUpperCase(); }
+function isBlack(p){ return p && p===p.toLowerCase(); }
 
 boardEl.addEventListener("click", e=>{
   if(!e.target.classList.contains("square")) return;
+  if(gameOver) return;
   const r = +e.target.dataset.r;
   const c = +e.target.dataset.c;
   const piece = board[r][c];
 
   if(selected){
-    // prüfen, ob Zug möglich
     if(possibleMoves.some(m=>m.r===r && m.c===c)){
       makeMove(selected.r, selected.c, r, c);
       turn = (turn==="white"?"black":"white");
@@ -122,7 +120,7 @@ boardEl.addEventListener("click", e=>{
   } else {
     if(piece && ((turn==="white" && isWhite(piece)) || (turn==="black" && isBlack(piece)))){
       selected = {r,c};
-      possibleMoves = getValidMoves(r,c);
+      possibleMoves = getValidMoves(r,c,true);
     }
   }
   render();
@@ -130,55 +128,37 @@ boardEl.addEventListener("click", e=>{
 
 function makeMove(r1,c1,r2,c2){
   const piece = board[r1][c1];
-  // Rochade
-  if(piece==="K" && Math.abs(c2-c1)===2){
-    if(c2===6){ board[7][5]=board[7][7]; board[7][7]=""; }
-    else { board[7][3]=board[7][0]; board[7][0]=""; }
-    whiteKingMoved=true;
-  }
-  if(piece==="k" && Math.abs(c2-c1)===2){
-    if(c2===6){ board[0][5]=board[0][7]; board[0][7]=""; }
-    else { board[0][3]=board[0][0]; board[0][0]=""; }
-    blackKingMoved=true;
-  }
   // En passant
-  if(piece==="P" && enPassant && r2===enPassant.r && c2===enPassant.c){
-    board[r2+1][c2]="";
-  }
-  if(piece==="p" && enPassant && r2===enPassant.r && c2===enPassant.c){
-    board[r2-1][c2]="";
-  }
+  if(piece==="P" && enPassant && r2===enPassant.r && c2===enPassant.c) board[r2+1][c2]="";
+  if(piece==="p" && enPassant && r2===enPassant.r && c2===enPassant.c) board[r2-1][c2]="";
   // Zug
   board[r2][c2] = piece;
   board[r1][c1] = "";
-  // Bauern-Umwandlung
+  // Umwandlung
   if(piece==="P" && r2===0) board[r2][c2]="Q";
   if(piece==="p" && r2===7) board[r2][c2]="q";
-  // En passant Möglichkeit setzen
+  // neue En passant Möglichkeit
   enPassant=null;
   if(piece==="P" && r1===6 && r2===4) enPassant={r:5,c:c1};
   if(piece==="p" && r1===1 && r2===3) enPassant={r:2,c:c1};
 }
 
-function getValidMoves(r,c){
+function getValidMoves(r,c,filterCheck){
   let moves=[];
   const piece = board[r][c];
   if(!piece) return moves;
   const add=(rr,cc)=>{
     if(rr<0||rr>=8||cc<0||cc>=8) return;
-    const target = board[rr][cc];
-    if((turn==="white" && isWhite(target))||(turn==="black" && isBlack(target))) return;
+    const t = board[rr][cc];
+    if((turn==="white" && isWhite(t))||(turn==="black" && isBlack(t))) return;
     moves.push({r:rr,c:cc});
   };
   const addSlide=(dr,dc)=>{
     let rr=r+dr, cc=c+dc;
     while(rr>=0&&rr<8&&cc>=0&&cc<8){
-      const target=board[rr][cc];
-      if(!target) moves.push({r:rr,c:cc});
-      else {
-        if((turn==="white"&&isBlack(target))||(turn==="black"&&isWhite(target))) moves.push({r:rr,c:cc});
-        break;
-      }
+      const t=board[rr][cc];
+      if(!t) moves.push({r:rr,c:cc});
+      else { if((turn==="white"&&isBlack(t))||(turn==="black"&&isWhite(t))) moves.push({r:rr,c:cc}); break; }
       rr+=dr; cc+=dc;
     }
   };
@@ -198,58 +178,81 @@ function getValidMoves(r,c){
         if(enPassant && enPassant.r===r+1 && Math.abs(enPassant.c-c)===1) moves.push(enPassant);
       }
       break;
-    case "r":
-      addSlide(1,0); addSlide(-1,0); addSlide(0,1); addSlide(0,-1);
-      break;
-    case "n":
-      [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]].forEach(d=>add(r+d[0],c+d[1]));
-      break;
-    case "b":
-      addSlide(1,1); addSlide(1,-1); addSlide(-1,1); addSlide(-1,-1);
-      break;
-    case "q":
-      addSlide(1,0); addSlide(-1,0); addSlide(0,1); addSlide(0,-1);
-      addSlide(1,1); addSlide(1,-1); addSlide(-1,1); addSlide(-1,-1);
-      break;
+    case "r": addSlide(1,0); addSlide(-1,0); addSlide(0,1); addSlide(0,-1); break;
+    case "n": [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]].forEach(d=>add(r+d[0],c+d[1])); break;
+    case "b": addSlide(1,1); addSlide(1,-1); addSlide(-1,1); addSlide(-1,-1); break;
+    case "q": addSlide(1,0); addSlide(-1,0); addSlide(0,1); addSlide(0,-1); addSlide(1,1); addSlide(1,-1); addSlide(-1,1); addSlide(-1,-1); break;
     case "k":
-      for(let dr=-1;dr<=1;dr++){
-        for(let dc=-1;dc<=1;dc++){
-          if(dr||dc) add(r+dr,c+dc);
-        }
-      }
-      // Rochade prüfen
-      if(turn==="white" && !whiteKingMoved && r===7 && c===4){
-        if(!board[7][5] && !board[7][6] && board[7][7]==="R") moves.push({r:7,c:6});
-        if(!board[7][3] && !board[7][2] && !board[7][1] && board[7][0]==="R") moves.push({r:7,c:2});
-      }
-      if(turn==="black" && !blackKingMoved && r===0 && c===4){
-        if(!board[0][5] && !board[0][6] && board[0][7]==="r") moves.push({r:0,c:6});
-        if(!board[0][3] && !board[0][2] && !board[0][1] && board[0][0]==="r") moves.push({r:0,c:2});
-      }
+      for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) if(dr||dc) add(r+dr,c+dc);
       break;
+  }
+  // Schachprüfung filtern
+  if(filterCheck){
+    moves = moves.filter(m=>{
+      let backup = JSON.parse(JSON.stringify(board));
+      makeMove(r,c,m.r,m.c);
+      let inCheck=isKingInCheck(turn);
+      board=backup;
+      return !inCheck;
+    });
   }
   return moves;
 }
 
-function checkGameState(){
-  // prüfen ob König im Schach
+function isKingInCheck(color){
   let kingPos=null;
   for(let r=0;r<8;r++) for(let c=0;c<8;c++){
-    if(turn==="white" && board[r][c]==="K") kingPos={r,c};
-    if(turn==="black" && board[r][c]==="k") kingPos={r,c};
+    if(color==="white" && board[r][c]==="K") kingPos={r,c};
+    if(color==="black" && board[r][c]==="k") kingPos={r,c};
   }
-  let inCheck=false;
   for(let r=0;r<8;r++) for(let c=0;c<8;c++){
     const p=board[r][c];
     if(!p) continue;
-    if((turn==="white"&&isBlack(p))||(turn==="black"&&isWhite(p))){
-      const moves=getValidMoves(r,c);
-      if(moves.some(m=>m.r===kingPos.r&&m.c===kingPos.c)) inCheck=true;
+    if((color==="white"&&isBlack(p))||(color==="black"&&isWhite(p))){
+      let tempTurn=turn; turn=(color==="white"?"black":"white");
+      const moves=getValidMoves(r,c,false);
+      turn=tempTurn;
+      if(moves.some(m=>m.r===kingPos.r&&m.c===kingPos.c)) return true;
     }
   }
-  if(inCheck) statusEl.textContent="⚠ "+(turn==="white"?"Weiß":"Schwarz")+" ist im Schach!";
-  else statusEl.textContent="";
+  return false;
 }
+
+let gameOver=false;
+function checkGameState(){
+  if(isKingInCheck(turn)){
+    // prüfen ob Züge vorhanden
+    let hasMoves=false;
+    for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+      if(board[r][c] && ((turn==="white"&&isWhite(board[r][c]))||(turn==="black"&&isBlack(board[r][c])))){
+        if(getValidMoves(r,c,true).length>0) hasMoves=true;
+      }
+    }
+    if(!hasMoves){
+      statusEl.textContent="♛ Schachmatt! "+(turn==="white"?"Schwarz":"Weiß")+" gewinnt!";
+      gameOver=true;
+      return;
+    } else {
+      statusEl.textContent="⚠ "+(turn==="white"?"Weiß":"Schwarz")+" steht im Schach!";
+      return;
+    }
+  } else {
+    // Patt?
+    let hasMoves=false;
+    for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+      if(board[r][c] && ((turn==="white"&&isWhite(board[r][c]))||(turn==="black"&&isBlack(board[r][c])))){
+        if(getValidMoves(r,c,true).length>0) hasMoves=true;
+      }
+    }
+    if(!hasMoves){
+      statusEl.textContent="🤝 Patt! Unentschieden!";
+      gameOver=true;
+      return;
+    }
+  }
+  statusEl.textContent="";
+}
+
 render();
 </script>
 </body>

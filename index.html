@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<title>Simple Chess</title>
+<title>Zwei-Spieler Schach Deluxe</title>
 <style>
   body {
     display: flex;
@@ -12,6 +12,7 @@
     background: #222;
     color: white;
     font-family: sans-serif;
+    flex-direction: column;
   }
   #board {
     display: grid;
@@ -25,21 +26,32 @@
     align-items: center;
     font-size: 48px;
     cursor: pointer;
+    position: relative;
   }
   .light { background: #eee; color: black; }
   .dark { background: #444; color: white; }
   .highlight { outline: 3px solid yellow; }
+  .dot {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: rgba(255, 255, 0, 0.7);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  h1 { margin-bottom: 10px; }
+  h2 { margin-top: 10px; }
 </style>
 </head>
 <body>
-<div>
-  <h1 style="text-align:center;">♟ Zwei-Spieler Schach ♟</h1>
-  <div id="board"></div>
-  <h2 id="turn">Weiß am Zug</h2>
-</div>
+<h1>♟ Zwei-Spieler Schach Deluxe ♟</h1>
+<div id="board"></div>
+<h2 id="turn">Weiß am Zug</h2>
+<h3 id="status"></h3>
 <script>
 const boardEl = document.getElementById("board");
 const turnEl = document.getElementById("turn");
+const statusEl = document.getElementById("status");
 
 let board = [
   ["r","n","b","q","k","b","n","r"],
@@ -52,7 +64,6 @@ let board = [
   ["R","N","B","Q","K","B","N","R"],
 ];
 
-// Figuren-Symbole
 const pieces = {
   "K":"♔","Q":"♕","R":"♖","B":"♗","N":"♘","P":"♙",
   "k":"♚","q":"♛","r":"♜","b":"♝","n":"♞","p":"♟"
@@ -60,6 +71,10 @@ const pieces = {
 
 let selected = null;
 let turn = "white";
+let possibleMoves = [];
+let whiteKingMoved=false, blackKingMoved=false;
+let whiteRookMoved=[false,false], blackRookMoved=[false,false];
+let enPassant = null; // speichert En-Passant-Ziel
 
 function render() {
   boardEl.innerHTML = "";
@@ -73,6 +88,12 @@ function render() {
       if (piece) sq.textContent = pieces[piece];
       if (selected && selected.r===r && selected.c===c) {
         sq.classList.add("highlight");
+      }
+      // Punkte für mögliche Züge
+      if(possibleMoves.some(m=>m.r===r && m.c===c)){
+        const dot = document.createElement("div");
+        dot.className = "dot";
+        sq.appendChild(dot);
       }
       boardEl.appendChild(sq);
     }
@@ -90,72 +111,145 @@ boardEl.addEventListener("click", e=>{
   const piece = board[r][c];
 
   if(selected){
-    // versuchen, zu ziehen
-    if(validMove(selected.r, selected.c, r, c)){
-      board[r][c] = board[selected.r][selected.c];
-      board[selected.r][selected.c] = "";
+    // prüfen, ob Zug möglich
+    if(possibleMoves.some(m=>m.r===r && m.c===c)){
+      makeMove(selected.r, selected.c, r, c);
       turn = (turn==="white"?"black":"white");
+      checkGameState();
     }
     selected = null;
+    possibleMoves = [];
   } else {
     if(piece && ((turn==="white" && isWhite(piece)) || (turn==="black" && isBlack(piece)))){
       selected = {r,c};
+      possibleMoves = getValidMoves(r,c);
     }
   }
   render();
 });
 
-// stark vereinfachte Zuglogik
-function validMove(r1,c1,r2,c2){
+function makeMove(r1,c1,r2,c2){
   const piece = board[r1][c1];
-  if(!piece) return false;
-  const target = board[r2][c2];
-  if(isWhite(piece) && isWhite(target)) return false;
-  if(isBlack(piece) && isBlack(target)) return false;
+  // Rochade
+  if(piece==="K" && Math.abs(c2-c1)===2){
+    if(c2===6){ board[7][5]=board[7][7]; board[7][7]=""; }
+    else { board[7][3]=board[7][0]; board[7][0]=""; }
+    whiteKingMoved=true;
+  }
+  if(piece==="k" && Math.abs(c2-c1)===2){
+    if(c2===6){ board[0][5]=board[0][7]; board[0][7]=""; }
+    else { board[0][3]=board[0][0]; board[0][0]=""; }
+    blackKingMoved=true;
+  }
+  // En passant
+  if(piece==="P" && enPassant && r2===enPassant.r && c2===enPassant.c){
+    board[r2+1][c2]="";
+  }
+  if(piece==="p" && enPassant && r2===enPassant.r && c2===enPassant.c){
+    board[r2-1][c2]="";
+  }
+  // Zug
+  board[r2][c2] = piece;
+  board[r1][c1] = "";
+  // Bauern-Umwandlung
+  if(piece==="P" && r2===0) board[r2][c2]="Q";
+  if(piece==="p" && r2===7) board[r2][c2]="q";
+  // En passant Möglichkeit setzen
+  enPassant=null;
+  if(piece==="P" && r1===6 && r2===4) enPassant={r:5,c:c1};
+  if(piece==="p" && r1===1 && r2===3) enPassant={r:2,c:c1};
+}
 
-  const dr = r2-r1, dc = c2-c1;
+function getValidMoves(r,c){
+  let moves=[];
+  const piece = board[r][c];
+  if(!piece) return moves;
+  const add=(rr,cc)=>{
+    if(rr<0||rr>=8||cc<0||cc>=8) return;
+    const target = board[rr][cc];
+    if((turn==="white" && isWhite(target))||(turn==="black" && isBlack(target))) return;
+    moves.push({r:rr,c:cc});
+  };
+  const addSlide=(dr,dc)=>{
+    let rr=r+dr, cc=c+dc;
+    while(rr>=0&&rr<8&&cc>=0&&cc<8){
+      const target=board[rr][cc];
+      if(!target) moves.push({r:rr,c:cc});
+      else {
+        if((turn==="white"&&isBlack(target))||(turn==="black"&&isWhite(target))) moves.push({r:rr,c:cc});
+        break;
+      }
+      rr+=dr; cc+=dc;
+    }
+  };
   switch(piece.toLowerCase()){
     case "p":
       if(isWhite(piece)){
-        if(dr===-1 && dc===0 && !target) return true;
-        if(r1===6 && dr===-2 && dc===0 && !target && !board[r1-1][c1]) return true;
-        if(dr===-1 && Math.abs(dc)===1 && target && isBlack(target)) return true;
+        if(!board[r-1][c]) add(r-1,c);
+        if(r===6 && !board[5][c] && !board[4][c]) add(4,c);
+        if(board[r-1] && isBlack(board[r-1][c-1])) add(r-1,c-1);
+        if(board[r-1] && isBlack(board[r-1][c+1])) add(r-1,c+1);
+        if(enPassant && enPassant.r===r-1 && Math.abs(enPassant.c-c)===1) moves.push(enPassant);
       } else {
-        if(dr===1 && dc===0 && !target) return true;
-        if(r1===1 && dr===2 && dc===0 && !target && !board[r1+1][c1]) return true;
-        if(dr===1 && Math.abs(dc)===1 && target && isWhite(target)) return true;
+        if(!board[r+1][c]) add(r+1,c);
+        if(r===1 && !board[2][c] && !board[3][c]) add(3,c);
+        if(board[r+1] && isWhite(board[r+1][c-1])) add(r+1,c-1);
+        if(board[r+1] && isWhite(board[r+1][c+1])) add(r+1,c+1);
+        if(enPassant && enPassant.r===r+1 && Math.abs(enPassant.c-c)===1) moves.push(enPassant);
       }
       break;
     case "r":
-      if(dr===0 || dc===0) return clearPath(r1,c1,r2,c2);
+      addSlide(1,0); addSlide(-1,0); addSlide(0,1); addSlide(0,-1);
       break;
     case "n":
-      if((Math.abs(dr)===2 && Math.abs(dc)===1)||(Math.abs(dr)===1 && Math.abs(dc)===2)) return true;
+      [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]].forEach(d=>add(r+d[0],c+d[1]));
       break;
     case "b":
-      if(Math.abs(dr)===Math.abs(dc)) return clearPath(r1,c1,r2,c2);
+      addSlide(1,1); addSlide(1,-1); addSlide(-1,1); addSlide(-1,-1);
       break;
     case "q":
-      if(dr===0||dc===0||Math.abs(dr)===Math.abs(dc)) return clearPath(r1,c1,r2,c2);
+      addSlide(1,0); addSlide(-1,0); addSlide(0,1); addSlide(0,-1);
+      addSlide(1,1); addSlide(1,-1); addSlide(-1,1); addSlide(-1,-1);
       break;
     case "k":
-      if(Math.abs(dr)<=1 && Math.abs(dc)<=1) return true;
+      for(let dr=-1;dr<=1;dr++){
+        for(let dc=-1;dc<=1;dc++){
+          if(dr||dc) add(r+dr,c+dc);
+        }
+      }
+      // Rochade prüfen
+      if(turn==="white" && !whiteKingMoved && r===7 && c===4){
+        if(!board[7][5] && !board[7][6] && board[7][7]==="R") moves.push({r:7,c:6});
+        if(!board[7][3] && !board[7][2] && !board[7][1] && board[7][0]==="R") moves.push({r:7,c:2});
+      }
+      if(turn==="black" && !blackKingMoved && r===0 && c===4){
+        if(!board[0][5] && !board[0][6] && board[0][7]==="r") moves.push({r:0,c:6});
+        if(!board[0][3] && !board[0][2] && !board[0][1] && board[0][0]==="r") moves.push({r:0,c:2});
+      }
       break;
   }
-  return false;
+  return moves;
 }
 
-function clearPath(r1,c1,r2,c2){
-  let dr = Math.sign(r2-r1);
-  let dc = Math.sign(c2-c1);
-  let r=r1+dr, c=c1+dc;
-  while(r!==r2 || c!==c2){
-    if(board[r][c]) return false;
-    r+=dr; c+=dc;
+function checkGameState(){
+  // prüfen ob König im Schach
+  let kingPos=null;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    if(turn==="white" && board[r][c]==="K") kingPos={r,c};
+    if(turn==="black" && board[r][c]==="k") kingPos={r,c};
   }
-  return true;
+  let inCheck=false;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    const p=board[r][c];
+    if(!p) continue;
+    if((turn==="white"&&isBlack(p))||(turn==="black"&&isWhite(p))){
+      const moves=getValidMoves(r,c);
+      if(moves.some(m=>m.r===kingPos.r&&m.c===kingPos.c)) inCheck=true;
+    }
+  }
+  if(inCheck) statusEl.textContent="⚠ "+(turn==="white"?"Weiß":"Schwarz")+" ist im Schach!";
+  else statusEl.textContent="";
 }
-
 render();
 </script>
 </body>

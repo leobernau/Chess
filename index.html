@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Simple Chess</title>
+<style>
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: #222;
+    color: white;
+    font-family: sans-serif;
+  }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 80px);
+    grid-template-rows: repeat(8, 80px);
+    border: 4px solid #555;
+  }
+  .square {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 48px;
+    cursor: pointer;
+  }
+  .light { background: #eee; color: black; }
+  .dark { background: #444; color: white; }
+  .highlight { outline: 3px solid yellow; }
+</style>
+</head>
+<body>
+<div>
+  <h1 style="text-align:center;">♟ Zwei-Spieler Schach ♟</h1>
+  <div id="board"></div>
+  <h2 id="turn">Weiß am Zug</h2>
+</div>
+<script>
+const boardEl = document.getElementById("board");
+const turnEl = document.getElementById("turn");
+
+let board = [
+  ["r","n","b","q","k","b","n","r"],
+  ["p","p","p","p","p","p","p","p"],
+  ["","","","","","","",""],
+  ["","","","","","","",""],
+  ["","","","","","","",""],
+  ["","","","","","","",""],
+  ["P","P","P","P","P","P","P","P"],
+  ["R","N","B","Q","K","B","N","R"],
+];
+
+// Figuren-Symbole
+const pieces = {
+  "K":"♔","Q":"♕","R":"♖","B":"♗","N":"♘","P":"♙",
+  "k":"♚","q":"♛","r":"♜","b":"♝","n":"♞","p":"♟"
+};
+
+let selected = null;
+let turn = "white";
+
+function render() {
+  boardEl.innerHTML = "";
+  for (let r=0; r<8; r++) {
+    for (let c=0; c<8; c++) {
+      const sq = document.createElement("div");
+      sq.classList.add("square", (r+c)%2==0?"light":"dark");
+      sq.dataset.r = r;
+      sq.dataset.c = c;
+      const piece = board[r][c];
+      if (piece) sq.textContent = pieces[piece];
+      if (selected && selected.r===r && selected.c===c) {
+        sq.classList.add("highlight");
+      }
+      boardEl.appendChild(sq);
+    }
+  }
+  turnEl.textContent = (turn==="white"?"Weiß":"Schwarz") + " am Zug";
+}
+
+function isWhite(piece){ return piece && piece===piece.toUpperCase(); }
+function isBlack(piece){ return piece && piece===piece.toLowerCase(); }
+
+boardEl.addEventListener("click", e=>{
+  if(!e.target.classList.contains("square")) return;
+  const r = +e.target.dataset.r;
+  const c = +e.target.dataset.c;
+  const piece = board[r][c];
+
+  if(selected){
+    // versuchen, zu ziehen
+    if(validMove(selected.r, selected.c, r, c)){
+      board[r][c] = board[selected.r][selected.c];
+      board[selected.r][selected.c] = "";
+      turn = (turn==="white"?"black":"white");
+    }
+    selected = null;
+  } else {
+    if(piece && ((turn==="white" && isWhite(piece)) || (turn==="black" && isBlack(piece)))){
+      selected = {r,c};
+    }
+  }
+  render();
+});
+
+// stark vereinfachte Zuglogik
+function validMove(r1,c1,r2,c2){
+  const piece = board[r1][c1];
+  if(!piece) return false;
+  const target = board[r2][c2];
+  if(isWhite(piece) && isWhite(target)) return false;
+  if(isBlack(piece) && isBlack(target)) return false;
+
+  const dr = r2-r1, dc = c2-c1;
+  switch(piece.toLowerCase()){
+    case "p":
+      if(isWhite(piece)){
+        if(dr===-1 && dc===0 && !target) return true;
+        if(r1===6 && dr===-2 && dc===0 && !target && !board[r1-1][c1]) return true;
+        if(dr===-1 && Math.abs(dc)===1 && target && isBlack(target)) return true;
+      } else {
+        if(dr===1 && dc===0 && !target) return true;
+        if(r1===1 && dr===2 && dc===0 && !target && !board[r1+1][c1]) return true;
+        if(dr===1 && Math.abs(dc)===1 && target && isWhite(target)) return true;
+      }
+      break;
+    case "r":
+      if(dr===0 || dc===0) return clearPath(r1,c1,r2,c2);
+      break;
+    case "n":
+      if((Math.abs(dr)===2 && Math.abs(dc)===1)||(Math.abs(dr)===1 && Math.abs(dc)===2)) return true;
+      break;
+    case "b":
+      if(Math.abs(dr)===Math.abs(dc)) return clearPath(r1,c1,r2,c2);
+      break;
+    case "q":
+      if(dr===0||dc===0||Math.abs(dr)===Math.abs(dc)) return clearPath(r1,c1,r2,c2);
+      break;
+    case "k":
+      if(Math.abs(dr)<=1 && Math.abs(dc)<=1) return true;
+      break;
+  }
+  return false;
+}
+
+function clearPath(r1,c1,r2,c2){
+  let dr = Math.sign(r2-r1);
+  let dc = Math.sign(c2-c1);
+  let r=r1+dr, c=c1+dc;
+  while(r!==r2 || c!==c2){
+    if(board[r][c]) return false;
+    r+=dr; c+=dc;
+  }
+  return true;
+}
+
+render();
+</script>
+</body>
+</html>
